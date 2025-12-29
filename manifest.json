@@ -1,0 +1,24 @@
+
+{
+  "name": "GraceAudio Bible 恩典聖經",
+  "short_name": "恩典聖經",
+  "description": "高品質 AI 聖經朗讀與閱讀進度追蹤應用",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fdfaf6",
+  "theme_color": "#78350f",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3389/3389381.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3389/3389381.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
