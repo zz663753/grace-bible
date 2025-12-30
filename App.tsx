@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BIBLE_BOOKS } from './constants';
 import { BibleBook, ReadingProgress, AudioState } from './types';
-import { fetchChapterText, generateSpeech, decodeBase64, decodeAudioData } from './services/geminiService';
+import { fetchChapterText, generateSpeech, decodeBase64, decodeAudioData } from './geminiService';
 import { Play, Pause, CheckCircle, RotateCcw, Headphones, Menu, X, BookOpen, Search, Check, Volume2 } from 'lucide-react';
 
 const App: React.FC = () => {
