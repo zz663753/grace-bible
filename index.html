@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>GraceAudio Bible - 聖經朗讀與進度紀錄</title>
+    <title>GraceAudio Bible - 恩典聖經</title>
     
     <!-- PWA & Mobile Web App Meta -->
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -20,6 +20,7 @@
             background-color: #fdfaf6;
             -webkit-tap-highlight-color: transparent;
             overscroll-behavior-y: none;
+            overflow: hidden;
         }
         .serif-text {
             font-family: 'Noto Serif TC', serif;
@@ -30,6 +31,12 @@
         .scrollbar-hide {
             -ms-overflow-style: none;
             scrollbar-width: none;
+        }
+        .safe-area-top {
+            padding-top: env(safe-area-inset-top);
+        }
+        .safe-area-bottom {
+            padding-bottom: env(safe-area-inset-bottom);
         }
     </style>
 <script type="importmap">

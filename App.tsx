@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BIBLE_BOOKS } from './constants';
 import { BibleBook, ReadingProgress, AudioState } from './types';
 import { fetchChapterText, generateSpeech, decodeBase64, decodeAudioData } from './geminiService';
-import { Play, Pause, CheckCircle, RotateCcw, Headphones, Menu, X, BookOpen, Search, Check, Volume2 } from 'lucide-react';
+import { Play, Pause, CheckCircle, Menu, X, BookOpen, Search, Check, Volume2, Loader2, ChevronRight, List, Type } from 'lucide-react';
 
 const App: React.FC = () => {
-  // State
+  // --- States ---
   const [selectedBook, setSelectedBook] = useState<BibleBook>(BIBLE_BOOKS[0]);
   const [selectedChapter, setSelectedChapter] = useState<number>(1);
   const [chapterContent, setChapterContent] = useState<string>('');
@@ -14,24 +14,30 @@ const App: React.FC = () => {
   const [isLoadingContent, setIsLoadingContent] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [sidebarSearch, setSidebarSearch] = useState('');
+  const [fontSize, setFontSize] = useState(20); // Default font size in px
 
-  // Audio Refs
+  // --- Refs ---
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Load Progress
+  // --- Persistence ---
   useEffect(() => {
     const savedProgress = localStorage.getItem('bible-progress');
     if (savedProgress) setProgress(JSON.parse(savedProgress));
+    
+    const savedFontSize = localStorage.getItem('bible-font-size');
+    if (savedFontSize) setFontSize(parseInt(savedFontSize, 10));
   }, []);
 
-  // Sync Progress to Storage
   useEffect(() => {
     localStorage.setItem('bible-progress', JSON.stringify(progress));
   }, [progress]);
 
-  // Load Chapter Content
+  useEffect(() => {
+    localStorage.setItem('bible-font-size', fontSize.toString());
+  }, [fontSize]);
+
+  // --- Data Loading ---
   useEffect(() => {
     const loadContent = async () => {
       setIsLoadingContent(true);
@@ -40,7 +46,7 @@ const App: React.FC = () => {
         const text = await fetchChapterText(selectedBook.name, selectedChapter);
         setChapterContent(text);
       } catch (error) {
-        setChapterContent("載入失敗，請檢查網路連線或 API Key 設定。");
+        setChapterContent("載入經文失敗，請檢查 API 設定或網路連線。");
       } finally {
         setIsLoadingContent(false);
       }
@@ -48,7 +54,7 @@ const App: React.FC = () => {
     loadContent();
   }, [selectedBook, selectedChapter]);
 
-  // Audio Actions
+  // --- Audio Control ---
   const initAudio = () => {
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -60,31 +66,27 @@ const App: React.FC = () => {
 
   const playAudio = async () => {
     if (!chapterContent || audioState === AudioState.LOADING) return;
-
     try {
       setAudioState(AudioState.LOADING);
       initAudio();
-      
       const base64 = await generateSpeech(chapterContent);
       const audioData = decodeBase64(base64);
       const buffer = await decodeAudioData(audioData, audioContextRef.current!);
-
+      
       if (audioSourceRef.current) {
         try { audioSourceRef.current.stop(); } catch(e) {}
       }
-
+      
       const source = audioContextRef.current!.createBufferSource();
       source.buffer = buffer;
       source.connect(audioContextRef.current!.destination);
       source.onended = () => setAudioState(AudioState.IDLE);
-      
       source.start(0);
       audioSourceRef.current = source;
       setAudioState(AudioState.PLAYING);
     } catch (error) {
-      console.error("Audio error:", error);
       setAudioState(AudioState.ERROR);
-      alert("音訊無法播放，請確認 Vercel 設定中的 API_KEY 是否正確。");
+      alert("播放失敗，請確認網路或 API_KEY。");
     }
   };
 
@@ -96,7 +98,7 @@ const App: React.FC = () => {
     setAudioState(AudioState.IDLE);
   }, []);
 
-  // Progress Actions
+  // --- Progress Handling ---
   const toggleChapterProgress = (bookId: string, chapter: number, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setProgress(prev => {
@@ -106,7 +108,6 @@ const App: React.FC = () => {
         : [...currentBookChapters, chapter];
       return { ...prev, [bookId]: updated };
     });
-    if (window.navigator.vibrate) window.navigator.vibrate(15);
   };
 
   const isCompleted = (bookId: string, chapter: number) => {
@@ -114,64 +115,74 @@ const App: React.FC = () => {
   };
 
   const handleChapterClick = (chap: number) => {
-    if (selectedChapter === chap) {
-      audioState === AudioState.PLAYING ? stopAudio() : playAudio();
-    } else {
-      setSelectedChapter(chap);
+    setSelectedChapter(chap);
+    if (window.innerWidth < 768) {
+      document.getElementById('content-area')?.scrollTo({ top: 0, behavior: 'smooth' });
     }
+  };
+
+  const adjustFontSize = (delta: number) => {
+    setFontSize(prev => Math.min(48, Math.max(14, prev + delta)));
   };
 
   const filteredBooks = BIBLE_BOOKS.filter(b => b.name.includes(sidebarSearch));
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#fdfaf6] text-slate-800 select-none">
+    <div className="flex h-screen w-full bg-[#fdfaf6] text-slate-800 overflow-hidden font-sans">
+      {/* Sidebar Overlay (Mobile) */}
       {isSidebarOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-30 md:hidden" onClick={() => setIsSidebarOpen(false)} />
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 transition-opacity" onClick={() => setIsSidebarOpen(false)} />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar / Drawer */}
       <aside className={`
-        fixed inset-y-0 left-0 z-40 w-72 bg-white border-r border-slate-200 transition-transform duration-300 md:relative md:translate-x-0 shadow-2xl md:shadow-none
+        fixed inset-y-0 left-0 z-50 w-full sm:w-80 bg-white border-r border-slate-200 transition-transform duration-300 ease-in-out
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
-        <div className="flex flex-col h-full safe-area-inset-top">
-          <div className="p-6 border-b border-slate-100 bg-[#fdfaf6]">
-            <div className="flex items-center justify-between">
-              <h1 className="text-2xl font-bold text-amber-900 flex items-center gap-2">
-                <BookOpen className="text-amber-600" />
-                恩典聖經
-              </h1>
-              <button className="md:hidden p-1 text-slate-400" onClick={() => setIsSidebarOpen(false)}><X size={20}/></button>
-            </div>
-            <div className="mt-4 relative">
-              <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
+        <div className="flex flex-col h-full safe-area-top">
+          <div className="p-6 border-b border-slate-100 bg-[#fdfaf6] flex items-center justify-between">
+            <h1 className="text-xl font-bold text-amber-900 flex items-center gap-2">
+              <BookOpen className="text-amber-600" size={24} />
+              恩典聖經 目錄
+            </h1>
+            <button className="p-2 text-slate-500 hover:bg-slate-100 rounded-full" onClick={() => setIsSidebarOpen(false)}>
+              <X size={24} />
+            </button>
+          </div>
+
+          <div className="p-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
               <input 
                 type="text" 
-                placeholder="搜尋經卷..." 
-                className="w-full pl-10 pr-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                placeholder="搜尋經卷名稱..." 
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-amber-500/30 transition-all"
                 value={sidebarSearch}
                 onChange={(e) => setSidebarSearch(e.target.value)}
               />
             </div>
           </div>
-          
-          <nav className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-hide">
+
+          <nav className="flex-1 overflow-y-auto p-2 space-y-4 scrollbar-hide">
             {['Old', 'New'].map(testament => (
-              <div key={testament}>
-                <div className="px-3 py-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50 mb-2">
-                  {testament === 'Old' ? '舊約聖經' : '新約聖經'}
-                </div>
-                <div className="space-y-1">
+              <div key={testament} className="px-2">
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-2 px-2">
+                  {testament === 'Old' ? '舊約全書' : '新約全書'}
+                </h3>
+                <div className="grid grid-cols-1 gap-1">
                   {filteredBooks.filter(b => b.testament === testament).map(book => (
                     <button
                       key={book.id}
                       onClick={() => { setSelectedBook(book); setSelectedChapter(1); setIsSidebarOpen(false); }}
-                      className={`w-full flex justify-between items-center px-3 py-3 text-sm rounded-xl transition-all ${selectedBook.id === book.id ? 'bg-amber-100 text-amber-950 font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
+                      className={`flex justify-between items-center px-4 py-3 rounded-xl transition-all ${selectedBook.id === book.id ? 'bg-amber-100 text-amber-950 font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
                     >
                       <span>{book.name}</span>
-                      <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded-full text-slate-400 font-medium">
-                        {(progress[book.id] || []).length}/{book.chapters}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-slate-400">
+                          {(progress[book.id] || []).length}/{book.chapters}
+                        </span>
+                        <ChevronRight size={14} className="text-slate-300" />
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -181,92 +192,123 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      {/* Main Content */}
+      {/* Main Container */}
       <main className="flex-1 flex flex-col h-full bg-[#fdfaf6] relative">
-        {/* Mobile Header */}
-        <div className="md:hidden p-4 pt-12 flex items-center justify-between bg-white/80 backdrop-blur-md border-b border-slate-100 sticky top-0 z-20">
-           <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-amber-900 bg-amber-50 rounded-full active:scale-90 transition-transform"><Menu size={20}/></button>
-           <div className="text-center">
-              <h2 className="font-bold text-slate-900">{selectedBook.name}</h2>
-              <p className="text-[10px] text-slate-500">第 {selectedChapter} 章</p>
-           </div>
-           <button 
-              onClick={() => toggleChapterProgress(selectedBook.id, selectedChapter)}
-              className={`p-2 rounded-full transition-all active:scale-90 ${isCompleted(selectedBook.id, selectedChapter) ? 'text-green-600 bg-green-50' : 'text-slate-300 bg-slate-50'}`}
-           >
-              <CheckCircle size={20}/>
-           </button>
-        </div>
-
-        {/* Desktop Header */}
-        <header className="hidden md:flex p-8 bg-white border-b border-slate-200 items-center justify-between">
-          <div>
-            <h2 className="text-3xl font-bold text-slate-900 serif-text">{selectedBook.name} 第 {selectedChapter} 章</h2>
-            <div className="flex items-center gap-2 mt-2 text-slate-500 text-sm">
-              <span className="bg-slate-100 px-2 py-0.5 rounded font-medium">{selectedBook.testament === 'Old' ? '舊約' : '新約'}</span>
-              <span>•</span>
-              <span className="flex items-center gap-1"><CheckCircle size={14} className="text-green-500" /> 已讀 {(progress[selectedBook.id] || []).length} / {selectedBook.chapters} 章</span>
+        {/* Sticky Top Header */}
+        <header className="flex flex-col bg-white/95 backdrop-blur-md border-b border-slate-200 z-30 shadow-sm safe-area-top">
+          <div className="flex items-center justify-between p-2 sm:p-4">
+            <div className="flex items-center gap-1 sm:gap-3">
+              <button 
+                onClick={() => setIsSidebarOpen(true)}
+                className="p-2 text-amber-900 bg-amber-50 hover:bg-amber-100 rounded-xl transition-all active:scale-90"
+                title="開啟目錄"
+              >
+                <List size={22} />
+              </button>
+              <div className="flex flex-col">
+                <h2 className="font-bold text-slate-900 text-sm sm:text-lg leading-tight serif-text truncate max-w-[120px] sm:max-w-none">
+                  {selectedBook.name} {selectedChapter}
+                </h2>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <button 
-              onClick={audioState === AudioState.PLAYING ? stopAudio : playAudio}
-              disabled={isLoadingContent}
-              className={`flex items-center gap-3 px-8 py-2.5 rounded-full shadow-lg transition-all transform active:scale-95 font-bold ${audioState === AudioState.PLAYING ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-amber-900 hover:bg-black text-white'} disabled:opacity-50`}
-            >
-              {audioState === AudioState.LOADING ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : audioState === AudioState.PLAYING ? <Pause size={20} /> : <Volume2 size={20} />}
-              {audioState === AudioState.LOADING ? '正在讀經...' : audioState === AudioState.PLAYING ? '暫停' : '開始朗讀'}
-            </button>
+
+            <div className="flex items-center gap-1 sm:gap-3">
+              {/* Font Size Adjusters */}
+              <div className="flex items-center bg-slate-100 rounded-full px-1 sm:px-2">
+                <button onClick={() => adjustFontSize(-2)} className="p-1.5 sm:p-2 text-slate-500 hover:text-amber-900 active:scale-90" title="小字">
+                  <span className="text-xs font-bold">A-</span>
+                </button>
+                <div className="w-[1px] h-4 bg-slate-200"></div>
+                <button onClick={() => adjustFontSize(2)} className="p-1.5 sm:p-2 text-slate-500 hover:text-amber-900 active:scale-90" title="大字">
+                  <span className="text-sm font-bold">A+</span>
+                </button>
+              </div>
+
+              {/* Main Play Button */}
+              <button 
+                onClick={audioState === AudioState.PLAYING ? stopAudio : playAudio}
+                disabled={isLoadingContent}
+                className={`flex items-center gap-1.5 px-3 sm:px-5 py-2 rounded-full shadow-md transition-all active:scale-95 font-bold text-sm ${
+                  audioState === AudioState.PLAYING 
+                    ? 'bg-amber-600 text-white' 
+                    : 'bg-amber-900 text-white'
+                } disabled:opacity-50`}
+              >
+                {audioState === AudioState.LOADING 
+                  ? <Loader2 size={18} className="animate-spin" /> 
+                  : audioState === AudioState.PLAYING 
+                    ? <Pause size={18} /> 
+                    : <Volume2 size={18} />
+                }
+                <span className="hidden sm:inline">
+                  {audioState === AudioState.LOADING ? '處理中' : audioState === AudioState.PLAYING ? '暫停' : '朗讀'}
+                </span>
+              </button>
+
+              {/* Status Mark Button */}
+              <button 
+                onClick={() => toggleChapterProgress(selectedBook.id, selectedChapter)}
+                className={`p-2 rounded-full transition-all active:scale-90 shadow-sm border ${
+                  isCompleted(selectedBook.id, selectedChapter) 
+                    ? 'bg-green-500 border-green-600 text-white' 
+                    : 'bg-white border-slate-100 text-slate-300'
+                }`}
+              >
+                <Check size={18} strokeWidth={3} />
+              </button>
+            </div>
           </div>
         </header>
 
-        {/* Floating Mobile Play */}
-        <div className="md:hidden fixed bottom-28 right-6 z-20">
-            <button onClick={audioState === AudioState.PLAYING ? stopAudio : playAudio} className={`w-16 h-16 rounded-full shadow-2xl flex items-center justify-center transition-all active:scale-90 ${audioState === AudioState.PLAYING ? 'bg-amber-600 text-white animate-pulse' : 'bg-amber-900 text-white'}`}>
-               {audioState === AudioState.LOADING ? <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : audioState === AudioState.PLAYING ? <Pause size={28} /> : <Volume2 size={28} />}
-            </button>
-        </div>
-
-        {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-12 lg:p-20 scrollbar-hide">
-          <div className={`max-w-3xl mx-auto bg-white/70 p-6 md:p-12 rounded-[2.5rem] shadow-sm border border-slate-100 mb-24 md:mb-0 transition-all ${audioState === AudioState.PLAYING ? 'ring-2 ring-amber-500/20' : ''}`}>
-            {isLoadingContent ? (
-              <div className="space-y-6 animate-pulse">
-                <div className="h-4 bg-slate-200 rounded w-1/2 mx-auto mb-10"></div>
-                {[...Array(5)].map((_, i) => <div key={i} className="h-3 bg-slate-100 rounded w-full mb-3"></div>)}
-              </div>
-            ) : (
-              <article className={`serif-text text-xl md:text-2xl leading-[2.4] text-slate-800 whitespace-pre-wrap selection:bg-amber-100 transition-opacity duration-500 ${audioState === AudioState.PLAYING ? 'text-amber-950' : ''}`}>
-                {chapterContent}
-              </article>
-            )}
+        {/* Content Area - Minimized Padding as requested */}
+        <div id="content-area" className="flex-1 overflow-y-auto scroll-smooth">
+          <div className="w-full mx-auto px-[2ch] pt-6 pb-32">
+            <div className="max-w-4xl mx-auto">
+              {isLoadingContent ? (
+                <div className="space-y-6 animate-pulse">
+                  {[...Array(15)].map((_, i) => (
+                    <div key={i} className="h-4 bg-slate-100 rounded-full w-full mb-4"></div>
+                  ))}
+                </div>
+              ) : (
+                <article 
+                  className={`serif-text text-slate-800 whitespace-pre-wrap transition-all duration-700 ${audioState === AudioState.PLAYING ? 'text-amber-950 font-medium' : ''}`}
+                  style={{ fontSize: `${fontSize}px`, lineHeight: 2.2 }}
+                >
+                  {chapterContent}
+                </article>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Improved Footer Navigation */}
-        <footer className="p-4 md:p-6 bg-white/95 backdrop-blur-md border-t border-slate-200 fixed bottom-0 left-0 right-0 md:relative z-10 safe-area-inset-bottom">
-          <div className="max-w-6xl mx-auto flex flex-col gap-3">
-            <div className="flex items-center justify-between px-1">
-               <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">章節快速切換與勾選</span>
-            </div>
-            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x" ref={scrollContainerRef}>
+        {/* Bottom Navigation for Chapters */}
+        <footer className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 z-30 safe-area-bottom shadow-lg">
+          <div className="max-w-6xl mx-auto p-2 sm:p-4">
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide snap-x px-1">
               {Array.from({ length: selectedBook.chapters }, (_, i) => i + 1).map(chap => {
                 const completed = isCompleted(selectedBook.id, chap);
                 const active = selectedChapter === chap;
                 return (
-                  <div key={chap} className="relative group snap-start">
-                     <button
+                  <div key={chap} className="relative snap-start shrink-0">
+                     <button 
                       onClick={() => handleChapterClick(chap)}
-                      className={`w-14 h-14 flex items-center justify-center rounded-2xl border-2 transition-all active:scale-90 ${active ? 'bg-amber-900 border-amber-900 text-white shadow-lg' : 'bg-white border-slate-100 text-slate-500'} ${completed && !active ? 'text-green-600 bg-green-50/50 border-green-100' : ''}`}
+                      className={`
+                        w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center rounded-xl border transition-all active:scale-95
+                        ${active ? 'bg-amber-900 border-amber-900 text-white shadow-md' : 'bg-white border-slate-100 text-slate-500'}
+                        ${completed && !active ? 'text-green-600 bg-green-50/50 border-green-100' : ''}
+                      `}
                     >
-                      {active && audioState === AudioState.PLAYING ? <Pause size={14} className="mr-1 animate-pulse" /> : null}
-                      <span className="font-bold text-sm">{chap}</span>
+                      <span className="font-bold text-sm sm:text-base">{chap}</span>
                     </button>
                     <button 
                       onClick={(e) => toggleChapterProgress(selectedBook.id, chap, e)}
-                      className={`absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full flex items-center justify-center border shadow-sm transition-all z-20 ${completed ? 'bg-green-500 border-green-600 text-white' : 'bg-white border-slate-200 text-slate-300'}`}
+                      className={`
+                        absolute -top-1 -right-1 w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center border shadow-sm transition-all z-20
+                        ${completed ? 'bg-green-500 border-green-600 text-white' : 'bg-white border-slate-200 text-slate-300'}
+                      `}
                     >
-                      {completed ? <Check size={12} strokeWidth={4} /> : <CheckCircle size={14} />}
+                      {completed ? <Check size={10} strokeWidth={4} /> : <CheckCircle size={12} />}
                     </button>
                   </div>
                 );
